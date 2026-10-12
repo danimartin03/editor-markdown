@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor de Markdown</title>
+  <meta name="description" content="Editor de Markdown con vista previa en vivo. Escribe a un lado y mira el resultado al otro. Todo se guarda en tu navegador.">
+  <link rel="stylesheet" href="css/estilos.css">
+
+  <!-- Pongo el tema antes de pintar la página para que no parpadee al cargar -->
+  <script>
+    (function () {
+      var tema = null;
+      try { tema = JSON.parse(localStorage.getItem('editor-markdown:tema')); } catch (error) { /* sin localStorage no pasa nada */ }
+      if (tema !== 'claro' && tema !== 'oscuro') {
+        tema = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro';
+      }
+      document.documentElement.dataset.tema = tema;
+    })();
+  </script>
+</head>
+<body>
+  <a class="saltar" href="#editor">Saltar al editor</a>
+
+  <!-- Todo lo de dentro de .app ocupa justo el alto de la pantalla: los paneles se desplazan por dentro -->
+  <div class="app">
+    <header class="cabecera">
+      <h1 class="marca"><span class="marca-signo" aria-hidden="true">#</span>Editor de Markdown</h1>
+      <div class="acciones">
+        <button type="button" class="boton" id="botonNuevo">Nuevo</button>
+        <button type="button" class="boton" id="botonAbrir">Abrir .md</button>
+        <input type="file" id="campoArchivo" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+        <button type="button" class="boton" id="botonDescargarMd">Descargar .md</button>
+        <button type="button" class="boton" id="botonDescargarHtml">Descargar HTML</button>
+        <button type="button" class="boton" id="botonTema" aria-pressed="false">Tema oscuro</button>
+      </div>
+    </header>
+
+    <p class="aviso" id="avisoGeneral" role="alert" hidden></p>
+
+    <!-- En el móvil solo cabe un panel: con estos dos botones se elige cuál -->
+    <div class="pestanas" role="group" aria-label="Qué panel ver">
+      <button type="button" id="pestanaEditor" data-pestana="editor" aria-pressed="true">Escribir</button>
+      <button type="button" id="pestanaVista" data-pestana="vista" aria-pressed="false">Vista previa</button>
+    </div>
+
+    <main class="paneles" id="paneles" data-pestana="editor">
+      <section class="panel panel-editor" aria-labelledby="tituloEditor">
+        <h2 class="solo-lectores" id="tituloEditor">Editor</h2>
+
+        <div class="herramientas" id="herramientas" role="group" aria-label="Dar formato">
+          <button type="button" data-accion="negrita" aria-label="Negrita" title="Negrita (Ctrl+B)"><strong>B</strong></button>
+          <button type="button" data-accion="cursiva" aria-label="Cursiva" title="Cursiva (Ctrl+I)"><em>I</em></button>
+          <button type="button" data-accion="titulo" aria-label="Título" title="Título">H2</button>
+          <button type="button" data-accion="lista" title="Lista">Lista</button>
+          <button type="button" data-accion="enlace" title="Enlace (Ctrl+K)">Enlace</button>
+          <button type="button" data-accion="codigo" title="Código (Ctrl+E)">Código</button>
+          <button type="button" data-accion="cita" title="Cita">Cita</button>
+        </div>
+
+        <label class="solo-lectores" for="editor">Texto en Markdown</label>
+        <textarea id="editor" class="editor" spellcheck="true" placeholder="Escribe aquí en Markdown…"></textarea>
+      </section>
+
+      <section class="panel panel-vista" aria-labelledby="tituloVista">
+        <h2 class="solo-lectores" id="tituloVista">Vista previa</h2>
+
+        <div class="vista-barra">
+          <label class="casilla" for="campoSeguir">
+            <input type="checkbox" id="campoSeguir" checked>
+            Seguir al editor al desplazar
+          </label>
+        </div>
+
+        <!-- tabindex="0" para poder desplazarla con las flechas del teclado -->
+        <article class="vista" id="vista" tabindex="0" aria-label="Vista previa del documento"></article>
+      </section>
+    </main>
+
+    <div class="estado">
+      <p id="contadores">0 palabras · 0 caracteres · 0 min de lectura</p>
+      <p id="estadoGuardado" role="status"></p>
+    </div>
+  </div>
+
+  <footer class="pie">
+    <p>Hecho por Daniel Martín Pérez · <a href="https://github.com/danimartin03/editor-markdown">Código en GitHub</a></p>
+    <p>
+      Usa <a href="https://marked.js.org/">marked</a> (MIT) para convertir el Markdown,
+      <a href="https://github.com/cure53/DOMPurify">DOMPurify</a> (Apache 2.0 / MPL 2.0) para sanear el HTML
+      y <a href="https://highlightjs.org/">highlight.js</a> (BSD 3-Clause) para colorear el código.
+    </p>
+    <p>Atajos: <kbd>Ctrl</kbd>+<kbd>B</kbd> negrita · <kbd>Ctrl</kbd>+<kbd>I</kbd> cursiva · <kbd>Ctrl</kbd>+<kbd>K</kbd> enlace · <kbd>Ctrl</kbd>+<kbd>E</kbd> código · <kbd>Ctrl</kbd>+<kbd>S</kbd> descargar</p>
+  </footer>
+
+  <!-- ============ Ventana: confirmar algo que no tiene vuelta atrás ============ -->
+  <dialog class="ventana" id="dialogoConfirmar" aria-labelledby="textoConfirmar">
+    <form method="dialog">
+      <p class="pregunta" id="textoConfirmar"></p>
+      <div class="ventana-botones">
+        <button type="submit" class="boton" value="cancelar">Cancelar</button>
+        <button type="submit" class="boton boton-principal" value="aceptar" id="botonConfirmar">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Las tres librerías vienen de cdnjs con versión fija. El "integrity" hace que el navegador
+       compruebe que el archivo es exactamente el que yo probé; si alguien lo cambia, no se carga. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.0/lib/marked.umd.min.js"
+          integrity="sha512-vyMZJAex6630R9bwuWSFTqe36izDPqqG2Poyh/bSPvgUSQiMhsVrwXtbYGpg4TSFfWJvXKuQ3cddFwv+hA7Psw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.16/purify.min.js"
+          integrity="sha512-flQmhkXNRQ3iUfvtdCobtpMjCb6kE+zLnTiAulAQJ3WykVfy84JvCMOo6vhwWXHTXjR25h9Zj+LyGFRWKjRoag=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.2/highlight.min.js"
+          integrity="sha512-VSPLUv/n1Bmn+4zoxBNwpuFAO3//79I0Aax/qHDx24R47vylPcc9PrHDCqlePwHnh3joiM7/YTQhcXyQAAxvPQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+
+  <script src="js/texto.js" defer></script>
+  <script src="js/convertir.js" defer></script>
+  <script src="js/ejemplo.js" defer></script>
+  <script src="js/app.js" defer></script>
+</body>
+</html>

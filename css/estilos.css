@@ -1,0 +1,608 @@
+/* ==========================================================
+   Editor de Markdown
+   La idea del diseño: un cuaderno de imprenta. A la izquierda
+   se escribe "en bruto", con letra de máquina; a la derecha se
+   ve la página ya compuesta, con letra de libro.
+   Está hecho móvil primero: lo de pantallas grandes va al final.
+   ========================================================== */
+
+/* ---------- Colores y medidas ---------- */
+:root {
+  --papel: #f7f3ea;
+  --panel-editor: #eee8da;
+  --superficie: #fffdf8;
+  --tinta: #22252b;
+  --tinta-suave: #575c66;
+  --borde: #d5ccb9;
+  --acento: #1e4d8c;
+  --sobre-acento: #ffffff;
+  --marca-codigo: #ece5d3;
+  --aviso-fondo: #fff0bf;
+
+  /* Colores para el código resaltado */
+  --codigo-clave: #8a2c7a;
+  --codigo-texto: #1b6b3a;
+  --codigo-numero: #9a4a00;
+  --codigo-comentario: #6b6f78;
+  --codigo-nombre: #1e4d8c;
+
+  --radio: 8px;
+  --fuente: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente-lectura: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --fuente-mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+  color-scheme: light;
+}
+
+:root[data-tema="oscuro"] {
+  --papel: #1a1d23;
+  --panel-editor: #14171c;
+  --superficie: #21252d;
+  --tinta: #ece6d8;
+  --tinta-suave: #aaa596;
+  --borde: #373c47;
+  --acento: #93bbf2;
+  --sobre-acento: #0f1a2b;
+  --marca-codigo: #2c313b;
+  --aviso-fondo: #3d3413;
+
+  --codigo-clave: #e39bd6;
+  --codigo-texto: #8fd6a4;
+  --codigo-numero: #f0b072;
+  --codigo-comentario: #9a9fa9;
+  --codigo-nombre: #93bbf2;
+
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Si no pongo esto, los elementos con display propio ignoran el atributo hidden */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: var(--fuente);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--acento);
+}
+
+kbd {
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  background: var(--superficie);
+  font-family: var(--fuente-mono);
+  font-size: 0.85em;
+}
+
+/* El foco siempre se ve, con el mismo estilo en toda la página */
+:focus-visible {
+  outline: 3px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.saltar {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 30;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radio);
+  background: var(--tinta);
+  color: var(--papel);
+}
+
+.saltar:focus {
+  top: 1rem;
+}
+
+/* ---------- La app: ocupa justo el alto de la pantalla ---------- */
+/* Es una columna: cabecera, pestañas, paneles (que se estiran) y barra de estado.
+   dvh es el alto visible de verdad en el móvil, sin contar la barra del navegador. */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 30rem;
+}
+
+/* ---------- Cabecera ---------- */
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--borde);
+}
+
+.marca {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  font-family: var(--fuente-lectura);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.marca-signo {
+  color: var(--acento);
+  font-family: var(--fuente-mono);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* ---------- Botones ---------- */
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: var(--superficie);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.boton:hover {
+  border-color: var(--acento);
+}
+
+.boton-principal {
+  border-color: var(--acento);
+  background: var(--acento);
+  color: var(--sobre-acento);
+}
+
+.aviso {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--borde);
+  background: var(--aviso-fondo);
+  font-size: 0.95rem;
+}
+
+/* ---------- Pestañas (solo en móvil) ---------- */
+.pestanas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--borde);
+}
+
+.pestanas button {
+  min-height: 2.75rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--tinta-suave);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pestanas button[aria-pressed="true"] {
+  border-bottom-color: var(--acento);
+  color: var(--tinta);
+}
+
+/* ---------- Paneles ---------- */
+/* min-height: 0 es para que los paneles puedan encoger y sea su contenido el que se desplace */
+.paneles {
+  flex: 1;
+  display: grid;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* En el móvil solo se ve el panel de la pestaña elegida */
+.paneles[data-pestana="editor"] .panel-vista,
+.paneles[data-pestana="vista"] .panel-editor {
+  display: none;
+}
+
+.panel-editor {
+  background: var(--panel-editor);
+}
+
+.herramientas {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--borde);
+  overflow-x: auto;
+}
+
+.herramientas button {
+  flex: none;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radio);
+  background: none;
+  color: var(--tinta);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.herramientas button:hover {
+  border-color: var(--borde);
+  background: var(--superficie);
+}
+
+.herramientas em {
+  font-family: var(--fuente-lectura);
+}
+
+.editor {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  padding: 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--tinta);
+  font-family: var(--fuente-mono);
+  /* Menos de 16px y el iPhone hace zoom al tocar el campo */
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: none;
+  tab-size: 2;
+}
+
+/* El textarea ocupa todo el panel, así que dibujo el foco por dentro para que no se corte */
+.editor:focus-visible,
+.vista:focus-visible {
+  outline-offset: -3px;
+}
+
+.panel-vista {
+  background: var(--superficie);
+}
+
+.vista-barra {
+  display: none;
+}
+
+.casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--tinta-suave);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.casilla input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  accent-color: var(--acento);
+}
+
+/* ---------- La vista previa: letra de libro ---------- */
+.vista {
+  flex: 1;
+  min-height: 0;
+  padding: 1.25rem 1rem 3rem;
+  overflow-y: auto;
+  font-family: var(--fuente-lectura);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+/* Lo de dentro no se estira más de lo cómodo para leer */
+.vista > * {
+  max-width: 42rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.vista > :first-child {
+  margin-top: 0;
+}
+
+.vista h1,
+.vista h2,
+.vista h3,
+.vista h4,
+.vista h5,
+.vista h6 {
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+  line-height: 1.25;
+}
+
+.vista h1 {
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid var(--tinta);
+  font-size: 1.9rem;
+}
+
+.vista h2 {
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--borde);
+  font-size: 1.45rem;
+}
+
+.vista h3 {
+  font-size: 1.2rem;
+}
+
+.vista img {
+  max-width: 100%;
+  height: auto;
+}
+
+.vista blockquote {
+  margin-top: 1em;
+  margin-bottom: 1em;
+  padding: 0.2em 1em;
+  border-left: 4px solid var(--acento);
+  color: var(--tinta-suave);
+  font-style: italic;
+}
+
+.vista code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--marca-codigo);
+  font-family: var(--fuente-mono);
+  font-size: 0.88em;
+}
+
+.vista pre {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: var(--marca-codigo);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.vista pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.9rem;
+}
+
+/* Las tablas anchas se desplazan dentro de sí mismas en vez de romper la página */
+.vista table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  overflow-x: auto;
+  font-family: var(--fuente);
+  font-size: 0.95rem;
+}
+
+.vista th,
+.vista td {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--borde);
+  text-align: left;
+}
+
+.vista th {
+  background: var(--marca-codigo);
+}
+
+.vista hr {
+  border: 0;
+  border-top: 1px solid var(--borde);
+}
+
+.vista li + li {
+  margin-top: 0.25em;
+}
+
+.vista-vacia,
+.vista-aviso {
+  color: var(--tinta-suave);
+  font-family: var(--fuente);
+  font-style: italic;
+}
+
+/* Colores del código resaltado (las clases hljs-... las pone highlight.js) */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: var(--codigo-clave);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-attr,
+.hljs-addition {
+  color: var(--codigo-texto);
+}
+
+.hljs-number,
+.hljs-built_in,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-deletion {
+  color: var(--codigo-numero);
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--codigo-comentario);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-name,
+.hljs-section,
+.hljs-attribute,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: var(--codigo-nombre);
+}
+
+/* ---------- Barra de estado ---------- */
+.estado {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.2rem 1rem;
+  padding: 0.4rem 0.75rem;
+  border-top: 1px solid var(--borde);
+  color: var(--tinta-suave);
+  font-size: 0.85rem;
+}
+
+.estado p {
+  margin: 0;
+}
+
+/* ---------- Pie (queda debajo de la app, hay que bajar para verlo) ---------- */
+.pie {
+  padding: 1.25rem 1rem 2rem;
+  border-top: 1px solid var(--borde);
+  color: var(--tinta-suave);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.pie p {
+  max-width: 44rem;
+  margin: 0.4rem auto;
+}
+
+/* ---------- Ventana de confirmar ---------- */
+.ventana {
+  width: min(26rem, calc(100vw - 1.5rem));
+  padding: 1.25rem;
+  border: 1px solid var(--borde);
+  border-radius: calc(var(--radio) + 4px);
+  background: var(--superficie);
+  color: var(--tinta);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.3);
+}
+
+.ventana::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.pregunta {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.ventana-botones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+/* ---------- Pantallas grandes: los dos paneles a la vez ---------- */
+@media (min-width: 52rem) {
+  .cabecera {
+    padding: 0.6rem 1.25rem;
+  }
+
+  .pestanas {
+    display: none;
+  }
+
+  .paneles {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Aquí se ven siempre los dos, diga lo que diga la pestaña */
+  .paneles[data-pestana] .panel-editor,
+  .paneles[data-pestana] .panel-vista {
+    display: flex;
+  }
+
+  .panel-editor {
+    border-right: 1px solid var(--borde);
+  }
+
+  .editor {
+    padding: 1.25rem 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  .vista {
+    padding: 1.5rem 2rem 4rem;
+  }
+
+  .vista-barra {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 3.6rem;
+    padding: 0.4rem 1rem;
+    border-bottom: 1px solid var(--borde);
+  }
+
+  .estado {
+    padding: 0.4rem 1.25rem;
+  }
+}
+
+/* ---------- Animaciones ---------- */
+/* Solo animo si la persona no ha pedido reducir el movimiento */
+@media (prefers-reduced-motion: no-preference) {
+  .boton,
+  .herramientas button,
+  .pestanas button {
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .saltar {
+    transition: top 0.15s;
+  }
+}
