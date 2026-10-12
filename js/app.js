@@ -96,6 +96,67 @@ function alEscribir() {
   esperaVista = setTimeout(pintarVista, 120);
 }
 
+// ---------- Barra de herramientas y atajos ----------
+
+// Según el botón, pido a texto.js el cambio que hay que hacer.
+// Allí están las cuentas; aquí solo elijo cuál toca.
+function calcularCambio(accion, texto, inicio, fin) {
+  if (accion === 'negrita') return envolver(texto, inicio, fin, '**', 'negrita');
+  if (accion === 'cursiva') return envolver(texto, inicio, fin, '_', 'cursiva');
+  if (accion === 'titulo') return prefijarLineas(texto, inicio, fin, '## ');
+  if (accion === 'lista') return prefijarLineas(texto, inicio, fin, '- ');
+  if (accion === 'cita') return prefijarLineas(texto, inicio, fin, '> ');
+  if (accion === 'enlace') return insertarEnlace(texto, inicio, fin);
+  if (accion === 'codigo') return insertarCodigo(texto, inicio, fin);
+  return null;
+}
+
+function aplicarFormato(accion) {
+  const editor = porId('editor');
+  const textoAntes = editor.value;
+  const cambio = calcularCambio(accion, textoAntes, editor.selectionStart, editor.selectionEnd);
+  if (!cambio) return;
+  const textoEsperado = aplicarCambio(textoAntes, cambio);
+
+  // Selecciono el trozo que hay que sustituir y "escribo" encima el texto nuevo.
+  // execCommand está marcado como antiguo, pero es la única forma de que Ctrl+Z
+  // pueda deshacer lo que hace el botón, igual que si lo hubiera tecleado yo.
+  editor.focus();
+  editor.setSelectionRange(cambio.desde, cambio.hasta);
+  if (cambio.nuevo === '') {
+    document.execCommand('delete');
+  } else {
+    document.execCommand('insertText', false, cambio.nuevo);
+  }
+
+  // Plan B: si el navegador no ha hecho caso a execCommand, pongo el texto directamente
+  // (en ese caso Ctrl+Z no lo deshará, pero al menos el botón funciona)
+  if (editor.value !== textoEsperado) editor.value = textoEsperado;
+
+  editor.setSelectionRange(cambio.seleccion[0], cambio.seleccion[1]);
+  alEscribir();
+}
+
+function alPulsarHerramienta(evento) {
+  const boton = evento.target.closest('button');
+  if (boton) aplicarFormato(boton.dataset.accion);
+}
+
+const ATAJOS = { b: 'negrita', i: 'cursiva', k: 'enlace', e: 'codigo' };
+
+function alPulsarTeclaEnEditor(evento) {
+  // metaKey es la tecla Cmd del Mac
+  const conControl = (evento.ctrlKey || evento.metaKey) && !evento.altKey && !evento.shiftKey;
+  if (!conControl) return;
+
+  const accion = ATAJOS[evento.key.toLowerCase()];
+  if (!accion) return;
+
+  // OJO: sin esto el navegador haría lo suyo con el atajo (Ctrl+K y Ctrl+E van a su buscador)
+  evento.preventDefault();
+  aplicarFormato(accion);
+}
+
 // ---------- Arranque ----------
 
 // Espero a DOMContentLoaded para que ya estén cargados todos los archivos JS
@@ -107,6 +168,8 @@ function arrancar() {
   pintarVista();
 
   porId('editor').addEventListener('input', alEscribir);
+  porId('editor').addEventListener('keydown', alPulsarTeclaEnEditor);
+  porId('herramientas').addEventListener('click', alPulsarHerramienta);
 
   porId('botonTema').addEventListener('click', cambiarTema);
   porId('pestanaEditor').addEventListener('click', function () { cambiarPestana('editor'); });

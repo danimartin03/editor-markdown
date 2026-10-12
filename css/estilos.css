@@ -413,8 +413,7 @@ kbd {
 /* Las tablas anchas se desplazan dentro de sí mismas en vez de romper la página */
 .vista table {
   display: block;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
   border-collapse: collapse;
   overflow-x: auto;
   font-family: var(--fuente);
@@ -430,6 +429,13 @@ kbd {
 
 .vista th {
   background: var(--marca-codigo);
+}
+
+/* El amarillo que trae <mark> por defecto no se lee en el tema oscuro */
+.vista mark {
+  padding: 0 0.2em;
+  background: var(--aviso-fondo);
+  color: inherit;
 }
 
 .vista hr {
