@@ -87,6 +87,7 @@ function pintarVista() {
   // OJO: este es el ÚNICO sitio donde meto HTML en la página con innerHTML,
   // y lo que meto sale siempre de convertirMarkdown(), que lo sanea.
   porId('vista').innerHTML = convertirMarkdown(texto);
+  resaltarCodigo();
 }
 
 let esperaVista = null;
@@ -329,6 +330,43 @@ function alPulsarTeclaEnPagina(evento) {
   }
 }
 
+// ---------- Colores en los bloques de código ----------
+
+// Solo coloreo estos lenguajes (con sus nombres cortos). El resto se queda en un solo color.
+const LENGUAJES_CON_COLOR = ['js', 'javascript', 'html', 'xml', 'css', 'json', 'python', 'py', 'bash', 'sh'];
+
+function resaltarCodigo() {
+  // highlight.js es un extra: si no ha cargado, el código se ve igual pero sin colores
+  if (typeof hljs === 'undefined') return;
+
+  for (const bloque of porId('vista').querySelectorAll('pre code')) {
+    // marked pone el lenguaje en la clase: ```js  ->  class="language-js"
+    const lenguaje = bloque.className.replace('language-', '');
+    if (!LENGUAJES_CON_COLOR.includes(lenguaje)) continue;
+
+    // highlightElement lee el TEXTO del bloque y lo vuelve a poner con <span> de colores.
+    // Como parte del texto y no de HTML, por aquí no se puede colar código.
+    hljs.highlightElement(bloque);
+  }
+}
+
+// ---------- Desplazamiento a la par ----------
+
+// Cuando bajo en el editor, bajo la vista previa en la misma proporción.
+// Es aproximado: si voy por la mitad del texto, enseño la mitad del documento.
+function seguirAlEditor() {
+  if (!porId('campoSeguir').checked) return;
+  const editor = porId('editor');
+  const vista = porId('vista');
+
+  const recorridoEditor = editor.scrollHeight - editor.clientHeight;
+  // Si el texto cabe entero no hay nada que seguir (y evito dividir entre cero)
+  if (recorridoEditor <= 0) return;
+
+  const proporcion = editor.scrollTop / recorridoEditor;
+  vista.scrollTop = proporcion * (vista.scrollHeight - vista.clientHeight);
+}
+
 // ---------- Arranque ----------
 
 // Espero a DOMContentLoaded para que ya estén cargados todos los archivos JS
@@ -340,6 +378,7 @@ function arrancar() {
 
   porId('editor').addEventListener('input', alEscribir);
   porId('editor').addEventListener('keydown', alPulsarTeclaEnEditor);
+  porId('editor').addEventListener('scroll', seguirAlEditor);
   porId('herramientas').addEventListener('click', alPulsarHerramienta);
 
   porId('botonNuevo').addEventListener('click', empezarDeCero);
