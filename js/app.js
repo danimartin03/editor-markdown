@@ -1,6 +1,8 @@
 // Aquí va todo lo que toca la página: paneles, barra de herramientas, atajos y archivos.
 
 const CLAVE_TEMA = 'editor-markdown:tema';
+const CLAVE_DOCUMENTO = 'editor-markdown:documento';
+const TAMANO_MAXIMO_ARCHIVO = 1024 * 1024; // 1 MB
 
 // ---------- Ayudas pequeñas ----------
 
@@ -93,7 +95,11 @@ let esperaVista = null;
 // si se escribe rápido en un documento largo, no se convierta a cada letra.
 function alEscribir() {
   clearTimeout(esperaVista);
-  esperaVista = setTimeout(pintarVista, 120);
+  esperaVista = setTimeout(function () {
+    pintarVista();
+    pintarContadores();
+  }, 120);
+  programarGuardado();
 }
 
 // ---------- Barra de herramientas y atajos ----------
@@ -157,6 +163,172 @@ function alPulsarTeclaEnEditor(evento) {
   aplicarFormato(accion);
 }
 
+// ---------- Contadores ----------
+
+function pintarContadores() {
+  const texto = porId('editor').value;
+  const palabras = contarPalabras(texto);
+  const caracteres = contarCaracteres(texto);
+
+  porId('contadores').textContent =
+    palabras + (palabras === 1 ? ' palabra' : ' palabras') + ' · ' +
+    caracteres + (caracteres === 1 ? ' carácter' : ' caracteres') + ' · ' +
+    minutosDeLectura(palabras) + ' min de lectura';
+}
+
+// ---------- Autoguardado ----------
+
+let esperaGuardado = null;
+
+// No guardo a cada tecla: espero a que se pare de escribir medio segundo
+function programarGuardado() {
+  porId('estadoGuardado').textContent = 'Guardando…';
+  clearTimeout(esperaGuardado);
+  esperaGuardado = setTimeout(guardarDocumento, 500);
+}
+
+function guardarDocumento() {
+  clearTimeout(esperaGuardado);
+  const guardado = guardarDato(CLAVE_DOCUMENTO, porId('editor').value);
+  porId('estadoGuardado').textContent = guardado
+    ? 'Guardado en este navegador'
+    : 'No se ha podido guardar. Descarga el .md para no perderlo.';
+}
+
+// Lo que había guardado, o el documento de ejemplo si es la primera vez.
+// OJO: un documento vacío ("") también es un documento guardado; por eso miro
+// que sea un texto y no solo que "tenga algo".
+function leerDocumento() {
+  const guardado = leerDato(CLAVE_DOCUMENTO);
+  return typeof guardado === 'string' ? guardado : DOCUMENTO_DE_EJEMPLO;
+}
+
+// Cambio el documento entero (al arrancar, al abrir un archivo o al empezar de cero)
+function ponerDocumento(texto) {
+  const editor = porId('editor');
+  editor.value = texto;
+  editor.setSelectionRange(0, 0);
+  editor.scrollTop = 0;
+  pintarVista();
+  pintarContadores();
+}
+
+// ---------- Avisos y confirmaciones ----------
+
+function avisar(mensaje) {
+  porId('avisoGeneral').textContent = mensaje;
+  porId('avisoGeneral').hidden = mensaje === '';
+}
+
+// Abro la ventana de confirmar y espero la respuesta. Devuelvo true si aceptan.
+// Los botones están dentro de un <form method="dialog">, así que al pulsarlos
+// el navegador cierra la ventana y me deja en returnValue el value del botón.
+function confirmar(pregunta, textoBoton) {
+  const dialogo = porId('dialogoConfirmar');
+  porId('textoConfirmar').textContent = pregunta;
+  porId('botonConfirmar').textContent = textoBoton;
+
+  return new Promise(function (resolver) {
+    // Lo vacío antes, porque si cierran con Escape se queda el valor de la vez anterior
+    dialogo.returnValue = '';
+    dialogo.showModal();
+    dialogo.addEventListener('close', function () {
+      resolver(dialogo.returnValue === 'aceptar');
+    }, { once: true });
+  });
+}
+
+// ---------- Archivos ----------
+
+// Para descargar un texto que he creado en memoria, me invento un enlace y le hago clic
+function descargarTexto(texto, nombreArchivo, tipo) {
+  const url = URL.createObjectURL(new Blob([texto], { type: tipo }));
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.append(enlace);
+  enlace.click();
+  enlace.remove();
+  // Le doy un momento al navegador para que arranque la descarga antes de liberar la URL
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function descargarMarkdown() {
+  const texto = porId('editor').value;
+  descargarTexto(texto, nombreDeArchivo(texto) + '.md', 'text/markdown');
+  avisar('');
+}
+
+function descargarHtml() {
+  const texto = porId('editor').value;
+  if (!hayLibrerias()) {
+    avisar('Para crear el HTML hacen falta las librerías, que no se han podido cargar. El .md sí se puede descargar.');
+    return;
+  }
+  const pagina = crearPaginaHtml(tituloDelDocumento(texto) || 'Documento', convertirMarkdown(texto));
+  descargarTexto(pagina, nombreDeArchivo(texto) + '.html', 'text/html');
+  avisar('');
+}
+
+async function empezarDeCero() {
+  if (porId('editor').value.trim() !== '') {
+    const seguro = await confirmar('¿Empezar un documento nuevo? Se borrará el texto que hay ahora. Si lo quieres conservar, descárgalo antes.', 'Empezar de cero');
+    if (!seguro) return;
+  }
+  ponerDocumento('');
+  guardarDocumento();
+  avisar('');
+  porId('editor').focus();
+}
+
+async function alElegirArchivo() {
+  const campo = porId('campoArchivo');
+  const archivo = campo.files[0];
+  // Vacío el campo para que se pueda volver a elegir el mismo archivo
+  campo.value = '';
+  if (!archivo) return;
+
+  if (archivo.size > TAMANO_MAXIMO_ARCHIVO) {
+    avisar('El archivo pesa más de 1 MB, que es demasiado para este editor.');
+    return;
+  }
+
+  let texto = '';
+  try {
+    texto = await archivo.text();
+  } catch (error) {
+    avisar('No he podido leer el archivo.');
+    return;
+  }
+
+  // OJO: si alguien elige una foto o un PDF, al leerlo como texto sale basura.
+  // Los archivos que no son de texto casi siempre llevan el carácter "nulo" dentro.
+  if (texto.includes('\u0000')) {
+    avisar('Ese archivo no parece de texto. Elige un .md o un .txt.');
+    return;
+  }
+
+  if (porId('editor').value.trim() !== '') {
+    const seguro = await confirmar('¿Abrir «' + archivo.name + '»? Sustituirá el texto que hay ahora.', 'Abrir');
+    if (!seguro) return;
+  }
+
+  // En Windows los saltos de línea son \r\n. Los dejo todos como \n para que las cuentas cuadren.
+  ponerDocumento(texto.replace(/\r\n?/g, '\n'));
+  guardarDocumento();
+  avisar('');
+  porId('editor').focus();
+}
+
+// Ctrl+S en cualquier parte de la página descarga el .md en vez de "guardar la página web"
+function alPulsarTeclaEnPagina(evento) {
+  const conControl = (evento.ctrlKey || evento.metaKey) && !evento.altKey && !evento.shiftKey;
+  if (conControl && evento.key.toLowerCase() === 's') {
+    evento.preventDefault();
+    descargarMarkdown();
+  }
+}
+
 // ---------- Arranque ----------
 
 // Espero a DOMContentLoaded para que ya estén cargados todos los archivos JS
@@ -164,12 +336,20 @@ document.addEventListener('DOMContentLoaded', arrancar);
 
 function arrancar() {
   pintarBotonTema();
-  porId('editor').value = DOCUMENTO_DE_EJEMPLO;
-  pintarVista();
+  ponerDocumento(leerDocumento());
 
   porId('editor').addEventListener('input', alEscribir);
   porId('editor').addEventListener('keydown', alPulsarTeclaEnEditor);
   porId('herramientas').addEventListener('click', alPulsarHerramienta);
+
+  porId('botonNuevo').addEventListener('click', empezarDeCero);
+  porId('botonAbrir').addEventListener('click', function () { porId('campoArchivo').click(); });
+  porId('campoArchivo').addEventListener('change', alElegirArchivo);
+  porId('botonDescargarMd').addEventListener('click', descargarMarkdown);
+  porId('botonDescargarHtml').addEventListener('click', descargarHtml);
+  document.addEventListener('keydown', alPulsarTeclaEnPagina);
+  // Si cierran la pestaña justo después de escribir, guardo antes de que se vaya
+  window.addEventListener('pagehide', guardarDocumento);
 
   porId('botonTema').addEventListener('click', cambiarTema);
   porId('pestanaEditor').addEventListener('click', function () { cambiarPestana('editor'); });
