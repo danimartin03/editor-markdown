@@ -23,7 +23,7 @@
   --codigo-clave: #8a2c7a;
   --codigo-texto: #1b6b3a;
   --codigo-numero: #9a4a00;
-  --codigo-comentario: #6b6f78;
+  --codigo-comentario: #595d66;
   --codigo-nombre: #1e4d8c;
 
   --radio: 8px;
@@ -245,12 +245,14 @@ kbd {
   background: var(--panel-editor);
 }
 
+/* Si no caben en una fila (móviles estrechos), los botones pasan a la siguiente.
+   Prefiero eso a que alguno quede escondido y haya que adivinar que está. */
 .herramientas {
   display: flex;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.2rem;
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid var(--borde);
-  overflow-x: auto;
 }
 
 .herramientas button {
@@ -445,6 +447,15 @@ kbd {
 
 .vista li + li {
   margin-top: 0.25em;
+}
+
+/* En las listas de tareas ya está la casilla: le quito el punto para que no salgan los dos */
+.vista li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.vista li > input[type="checkbox"] {
+  margin: 0 0.4em 0 -1.3em;
 }
 
 .vista-vacia,
